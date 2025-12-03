@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: nyaysetu-blockchain
+    env: python
+    region: oregon
+    plan: free
+    branch: main
+    buildCommand: pip install -r requirements.txt
+    startCommand: python run_app.py
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: BLOCKCHAIN_NODE_ADDR
+        sync: false
+      - key: MONGODB_URI
+        sync: false
+      - key: FLASK_ENV
+        value: production

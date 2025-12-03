@@ -1,0 +1,32 @@
+{
+    "users": {
+        "UserA": "f4aaf50e-94f5-441d-8045-b946abb9e8b2",
+        "UserB": "0f40f740-14be-4ff4-942f-9342218e73a5",
+        "nidhi123": "d1932ef4-eea3-4d80-8f46-2430e822d312",
+        "xyz123": "1b2ceb12-f621-4903-8a85-ff74a2963fa1"
+    },
+    "files": {
+        "781a397e-ca79-4862-9865-4ce33c754dd6": {
+            "filename": "test_upload.txt",
+            "secure_name": "test_upload.txt",
+            "owner": "f4aaf50e-94f5-441d-8045-b946abb9e8b2",
+            "shared_with": [
+                "0f40f740-14be-4ff4-942f-9342218e73a5"
+            ]
+        },
+        "023a2af7-153d-4b0b-9bb8-4c3e85ac3509": {
+            "filename": "Screenshot 2025-06-08 005436.png",
+            "secure_name": "Screenshot_2025-06-08_005436.png",
+            "owner": "d1932ef4-eea3-4d80-8f46-2430e822d312",
+            "shared_with": [
+                "1b2ceb12-f621-4903-8a85-ff74a2963fa1"
+            ]
+        },
+        "5b25c94b-fa20-4268-908b-aeb36acd9f20": {
+            "filename": "Screenshot 2025-10-10 095900.png",
+            "secure_name": "Screenshot_2025-10-10_095900.png",
+            "owner": "d1932ef4-eea3-4d80-8f46-2430e822d312",
+            "shared_with": []
+        }
+    }
+}
