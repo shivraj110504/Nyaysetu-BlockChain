@@ -58,6 +58,7 @@ def get_tx_req():
         # Get chain data directly from blockchain object (no HTTP call needed)
         content = []
         for block in blockchain.chain:
+            # block.transactions is a list of transaction dicts
             for trans in block.transactions:
                 trans_copy = trans.copy()
                 trans_copy["index"] = block.index
@@ -284,7 +285,8 @@ def get_chain():
     """Get the entire blockchain"""
     chain = []
     for block in blockchain.chain:
-        chain.append(block.__dict__)
+        # Call __dict__() as a method, not attribute
+        chain.append(block.__dict__())
     
     print("Chain Len: {0}".format(len(chain)))
     return json.dumps({"length": len(chain), "chain": chain})
