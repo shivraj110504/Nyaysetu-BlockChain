@@ -20,18 +20,14 @@ load_dotenv(dotenv_path)
 app.secret_key = "super_secret_key_for_hackathon" # Set a secret key for sessions
 
 # Production-ready CORS configuration
+# Allow all origins for easier deployment - you can restrict this later
 CORS(app, resources={
     r"/*": {
-        "origins": [
-            "http://localhost:3000",  # Local development
-            "http://127.0.0.1:3000",
-            "https://*.vercel.app",   # All Vercel deployments
-            "https://*.vercel.com"    # Vercel preview deployments
-        ],
+        "origins": "*",  # Allow all origins (Vercel, localhost, etc.)
         "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
         "allow_headers": ["Content-Type", "Authorization"],
-        "supports_credentials": True,
-        "expose_headers": ["Content-Type", "X-CSRFToken"]
+        "supports_credentials": False,  # Set to False when using origins="*"
+        "expose_headers": ["Content-Type"]
     }
 })
 
@@ -58,20 +54,19 @@ ADDR = os.environ.get("BLOCKCHAIN_NODE_ADDR", "http://127.0.0.1:8800")
 #create a list of requests that peers has send to upload files
 def get_tx_req():
     global request_tx
-    chain_addr = "{0}/chain".format(ADDR)
     try:
-        resp = requests.get(chain_addr)
-        if resp.status_code == 200:
-            content = []
-            chain = json.loads(resp.content.decode())
-            for block in chain["chain"]:
-                for trans in block["transactions"]:
-                    trans["index"] = block["index"]
-                    trans["hash"] = block["prev_hash"]
-                    content.append(trans)
-            request_tx = sorted(content,key=lambda k: k["hash"],reverse=True)
-    except:
-        pass
+        # Get chain data directly from blockchain object (no HTTP call needed)
+        content = []
+        for block in blockchain.chain:
+            for trans in block.transactions:
+                trans_copy = trans.copy()
+                trans_copy["index"] = block.index
+                trans_copy["hash"] = block.prev_hash
+                content.append(trans_copy)
+        request_tx = sorted(content, key=lambda k: k["hash"], reverse=True)
+    except Exception as e:
+        print(f"DEBUG: Error in get_tx_req: {e}")
+        request_tx = []
 
 
 # Loads and runs the home page
@@ -186,9 +181,10 @@ def submit():
         "file_size" : file_states   #file size
     }
    
-    # Submit a new transaction
-    address = "{0}/new_transaction".format(ADDR)
-    requests.post(address, json=post_object)
+    # Submit transaction directly to blockchain (no HTTP call needed - same process)
+    blockchain.add_pending(post_object)
+    print(f"DEBUG: Transaction added to blockchain pending transactions")
+    
     end = timer()
     print(f"DEBUG: Upload completed in {end - start}s")
     return jsonify({"success": True, "message": "File uploaded successfully"}), 200
