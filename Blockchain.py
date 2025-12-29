@@ -12,16 +12,73 @@ class Blockchain:
     # Difficulty for proof of work (number of leading zeros required)
     difficulty = 3
     
-    def __init__(self):
-        """Initialize blockchain with genesis block."""
+    def __init__(self, db=None):
+        """
+        Initialize blockchain with genesis block and sync with DB.
+        
+        Args:
+            db: MongoDB database instance for persistence
+        """
         self.pending = []  # Pending transactions waiting to be mined
         self.chain = []  # The blockchain
         self.peers = set()  # Set of peer nodes for consensus
+        self.db = db
         
-        # Create genesis block
-        genesis_block = Block(0, [], "0")
-        genesis_block.hash = genesis_block.generate_hash()
-        self.chain.append(genesis_block)
+        # Try to load chain from DB
+        loaded_chain = self.load_from_db() if self.db is not None else []
+        
+        if loaded_chain:
+            self.chain = loaded_chain
+            print(f"Loaded blockchain from DB: {len(self.chain)} blocks")
+        else:
+            # Create genesis block
+            genesis_block = Block(0, [], "0")
+            genesis_block.hash = genesis_block.generate_hash()
+            self.chain.append(genesis_block)
+            
+            # Save genesis to DB if sync available
+            if self.db is not None:
+                self.save_block_to_db(genesis_block)
+                print("Created and saved genesis block to DB")
+
+    def load_from_db(self):
+        """Load the blockchain from MongoDB."""
+        if self.db is None: return []
+        
+        blocks_col = self.db["blocks"]
+        cursor = blocks_col.find().sort("index", 1)
+        
+        chain = []
+        for b_data in cursor:
+            block = Block(
+                b_data["index"],
+                b_data["transactions"],
+                b_data["prev_hash"]
+            )
+            block.timestamp = b_data.get("timestamp", block.timestamp)
+            block.nonce = b_data.get("nonce", 0)
+            block.hash = b_data.get("hash")
+            chain.append(block)
+        
+        return chain
+
+    def save_block_to_db(self, block):
+        """Save a validated block to the MongoDB blocks collection."""
+        if self.db is None: return
+        
+        blocks_col = self.db["blocks"]
+        # Check if block already exists to avoid duplicates
+        if blocks_col.find_one({"index": block.index}):
+            return
+            
+        blocks_col.insert_one({
+            "index": block.index,
+            "timestamp": block.timestamp,
+            "transactions": block.transactions,
+            "prev_hash": block.prev_hash,
+            "nonce": block.nonce,
+            "hash": block.hash
+        })
     
     def add_block(self, block, hashl):
         """
@@ -34,12 +91,11 @@ class Blockchain:
         Returns:
             bool: True if block was added, False otherwise
         """
-        prev_hash = self.last_block().hash
-        
-        # Verify block validity
         if prev_hash == block.prev_hash and self.is_valid(block, hashl):
             block.hash = hashl
             self.chain.append(block)
+            # Sync with DB
+            self.save_block_to_db(block)
             return True
         return False
     

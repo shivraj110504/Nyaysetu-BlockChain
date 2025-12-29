@@ -1,3 +1,4 @@
+import base64
 import json
 import os
 import requests
@@ -39,7 +40,7 @@ users_col = db["users"]
 files_col = db["files"]
 
 # Initialize Blockchain (for peer functionality)
-blockchain = BlockchainClass()
+blockchain = BlockchainClass(db=db)
 
 # Stores all the post transaction in the node
 request_tx = []
@@ -137,14 +138,15 @@ def logout():
 def submit():
     # Get userKey from form data (passed from Next.js)
     user_key = request.form.get("userKey")
+    username_from_form = request.form.get("username")
     
     if not user_key:
         print("DEBUG: No userKey in form data during submit")
         return jsonify({"error": "Missing userKey"}), 400
         
     start = timer()
-    # Get username from session or form
-    user = session.get("username", "unknown")
+    # Get username from form or session
+    user = username_from_form or session.get("username", "unknown")
     print(f"DEBUG: Submitting file for user: {user}, Key: {user_key}")
 
     up_file = request.files.get("v_file")
@@ -152,43 +154,58 @@ def submit():
     if not up_file or up_file.filename == '':
         return jsonify({"error": "No file provided"}), 400
 
-    secure_name = secure_filename(up_file.filename)
-    #save the uploaded file in destination
-    up_file.save(os.path.join("app/static/Uploads/", secure_name))
-    #add the file to the list to create a download link
-    files[up_file.filename] = os.path.join(app.root_path, "static" , "Uploads", secure_name)
-    #determines the size of the file uploaded in bytes 
-    file_states = os.stat(files[up_file.filename]).st_size 
+    # Read file content upfront to avoid stream exhaustion
+    file_content = up_file.read()
+    file_size = len(file_content)
     
+    # Create a unique filename to avoid collisions
+    timestamp = int(timer() * 1000)
+    unique_id = str(uuid.uuid4())[:8]
+    original_filename = up_file.filename
+    secure_name = f"{timestamp}_{unique_id}_{secure_filename(original_filename)}"
+    
+    # Save the uploaded file in destination (for immediate access)
+    upload_path = os.path.join("app/static/Uploads/", secure_name)
+    os.makedirs(os.path.dirname(upload_path), exist_ok=True)
+    with open(upload_path, "wb") as f:
+        f.write(file_content)
+        
     # Generate File Key
     file_key = str(uuid.uuid4())
     
-    # Save Metadata to MongoDB
+    # Store file content in MongoDB for persistence across server restarts
+    # This is critical for Render's ephemeral filesystem
+    file_base64 = base64.b64encode(file_content).decode('utf-8')
+    
+    # Save Metadata + Content to MongoDB
     files_col.insert_one({
         "file_key": file_key,
-        "filename": up_file.filename, # Original name for display
-        "secure_name": secure_name,   # System name
+        "filename": original_filename, 
+        "secure_name": secure_name,   
         "owner": user_key,
-        "shared_with": []
+        "shared_with": [],
+        "file_content": file_base64,
+        "file_size": file_size,
+        "created_at": timer()
     })
     print(f"DEBUG: File saved to MongoDB. FileKey: {file_key}, Owner: {user_key}")
 
-    #create a transaction object
+    # Create a transaction object
     post_object = {
-        "user": user, #user name
-        "v_file" : up_file.filename, #filename
-        "file_key": file_key, # Store file key in blockchain transaction
-        "file_data" : str(up_file.stream.read()), #file data
-        "file_size" : file_states   #file size
+        "user": user,
+        "v_file" : original_filename,
+        "file_key": file_key,
+        "file_data" : "Binary Content Stored in DB", # Placeholder for chain view
+        "file_size" : file_size
     }
    
-    # Submit transaction directly to blockchain (no HTTP call needed - same process)
+    # Submit transaction directly to blockchain
     blockchain.add_pending(post_object)
     print(f"DEBUG: Transaction added to blockchain pending transactions")
     
     end = timer()
     print(f"DEBUG: Upload completed in {end - start}s")
-    return jsonify({"success": True, "message": "File uploaded successfully"}), 200
+    return jsonify({"success": True, "message": "File uploaded successfully", "file_key": file_key}), 200
 
 @app.route("/share", methods=["POST"])
 def share_file():
@@ -254,6 +271,22 @@ def download_file_key(file_key):
     
     if f_data:
         p = os.path.join(app.root_path, "static" , "Uploads", f_data["secure_name"])
+        
+        # Check if file exists on disk. If not, restore from MongoDB.
+        if not os.path.exists(p):
+            print(f"DEBUG: File {p} missing from disk. Restoring from MongoDB.")
+            if "file_content" in f_data:
+                try:
+                    os.makedirs(os.path.dirname(p), exist_ok=True)
+                    content = base64.b64decode(f_data["file_content"])
+                    with open(p, "wb") as f:
+                        f.write(content)
+                except Exception as e:
+                    print(f"DEBUG: Error restoring file: {e}")
+                    return "Error restoring file from cloud storage", 500
+            else:
+                return "File content not found in database", 404
+                
         return send_file(p, as_attachment=True, download_name=f_data["filename"])
             
     return "File not found or access denied"
